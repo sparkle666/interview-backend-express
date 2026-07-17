@@ -1,0 +1,152 @@
+### Variables
+@baseUrl = http://localhost:3000
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyLTEyMyIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSIsInRpZXIiOiJmcmVlIiwiaWF0IjoxNzg0MjU2NDc3LCJleHAiOjE3ODY4NDg0Nzd9.07tORBpS0zJYMxpq-4OEmCumrPA1MuRWmLr2TkygH54
+@imageBase64 = REPLACE_WITH_BASE64_IMAGE
+
+# To convert a local image to base64 in PowerShell:
+# [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\your-image.png"))
+# Then paste the output into @imageBase64 above.
+# If your file is JPG/JPEG, change the prefix to data:image/jpeg;base64,
+# and for WebP use data:image/webp;base64,
+
+### Health check
+GET {{baseUrl}}/health
+
+### Auth - create a test JWT
+POST {{baseUrl}}/api/auth/token
+Content-Type: application/json
+
+{
+  "userId": "user-123",
+  "email": "test@example.com",
+  "tier": "free"
+}
+
+### Auth - get current user info
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### AI - extract problem info from screenshots
+POST {{baseUrl}}/api/ai/extract
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "images": [
+    "data:image/png;base64,{{imageBase64}}"
+  ],
+  "language": "python",
+  "provider": "openai",
+  "extractionModel": "gpt-4o-mini",
+  "conversationContext": "Solve this coding problem step by step."
+}
+
+### AI - solve a problem
+POST {{baseUrl}}/api/ai/solve
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "problemInfo": {
+    "problem_statement": "Given two integers a and b, return their sum.",
+    "constraints": "-10^9 <= a, b <= 10^9",
+    "example_input": "2 3",
+    "example_output": "5"
+  },
+  "language": "python",
+  "provider": "openai",
+  "solutionModel": "gpt-4o-mini"
+}
+
+### AI - process (extract + solve in one call)
+POST {{baseUrl}}/api/ai/process
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "images": [
+    "data:image/png;base64,{{imageBase64}}"
+  ],
+  "language": "python",
+  "provider": "openai",
+  "extractionModel": "gpt-4o-mini",
+  "solutionModel": "gpt-4o-mini",
+  "conversationContext": "Provide a concise explanation."
+}
+
+### AI - debug a solution from screenshots
+POST {{baseUrl}}/api/ai/debug
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "images": [
+    "data:image/png;base64,{{imageBase64}}"
+  ],
+  "problemStatement": "The code returns wrong output for large input.",
+  "language": "python",
+  "provider": "openai",
+  "debuggingModel": "gpt-4o-mini"
+}
+
+### AI - transcribe audio
+POST {{baseUrl}}/api/ai/transcribe
+Content-Type: application/json
+
+{
+  "audio": "REPLACE_WITH_BASE64_AUDIO",
+  "mimeType": "audio/webm",
+  "provider": "openai",
+  "speechRecognitionModel": "whisper-1"
+}
+
+### AI - answer suggestions for interview questions
+POST {{baseUrl}}/api/ai/answer-suggestions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "question": "Tell me about a time you handled pressure.",
+  "conversationHistory": "Candidate discussed teamwork and deadlines.",
+  "screenshotContext": "Resume screenshot attached.",
+  "candidateProfile": {
+    "name": "Jane Doe",
+    "resume": "Frontend engineer with 3 years of experience.",
+    "jobDescription": "Looking for a React engineer."
+  },
+  "provider": "openai",
+  "answerModel": "gpt-4o-mini"
+}
+
+### AI - get usage summary
+GET {{baseUrl}}/api/ai/usage
+Authorization: Bearer {{token}}
+
+
+
+### POST /api/ai/extract — upload real image files (multipart, new behaviour)
+# VS Code REST Client sends each file part as multipart/form-data.
+# The server converts them to base64 internally — no change needed in your client.
+POST {{baseUrl}}/api/ai/extract/upload
+Content-Type: multipart/form-data; boundary=----Boundary
+Authorization: Bearer {{token}}
+
+------Boundary
+Content-Disposition: form-data; name="images"; filename="screenshot.png"
+Content-Type: image/png
+
+< ./image.png
+------Boundary
+Content-Disposition: form-data; name="language"
+
+python
+------Boundary
+Content-Disposition: form-data; name="provider"
+
+openai
+------Boundary
+Content-Disposition: form-data; name="extractionModel"
+
+gpt-4o-mini
+------Boundary--
+

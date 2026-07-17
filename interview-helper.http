@@ -1,0 +1,255 @@
+# interview-helper-backend — VS Code REST Client
+# ─────────────────────────────────────────────
+# Usage:
+#   1. Start the server:  npm run dev
+#   2. Copy .env.example → .env and fill in your keys
+#   3. Click "Send Request" above any ### block
+#
+# Step 0: get a token first, then paste it into @token below.
+
+@base = http://localhost:3000
+@token = PASTE_JWT_HERE
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTH
+# ══════════════════════════════════════════════════════════════════════════════
+
+### POST /api/auth/token — get a dev JWT
+# Copy the "token" value from the response and paste it into @token above.
+POST {{base}}/api/auth/token
+Content-Type: application/json
+
+{
+  "userId": "test-user-1",
+  "email": "test@example.com",
+  "tier": "pro"
+}
+
+###
+
+### GET /api/auth/me — verify token + see tier/usage
+GET {{base}}/api/auth/me
+Authorization: Bearer {{token}}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# USAGE
+# ══════════════════════════════════════════════════════════════════════════════
+
+### GET /api/ai/usage — remaining credits today
+GET {{base}}/api/ai/usage
+Authorization: Bearer {{token}}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXTRACT  (base64 JSON — existing behaviour)
+# ══════════════════════════════════════════════════════════════════════════════
+
+### POST /api/ai/extract — base64 images → structured problem info (no credit)
+POST {{base}}/api/ai/extract
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "images": ["<BASE64_STRING_HERE>"],
+  "language": "python",
+  "provider": "anthropic",
+  "extractionModel": "claude-opus-4-6",
+  "conversationContext": ""
+}
+
+###
+
+### POST /api/ai/extract — upload real image files (multipart, new behaviour)
+# VS Code REST Client sends each file part as multipart/form-data.
+# The server converts them to base64 internally — no change needed in your client.
+POST {{base}}/api/ai/extract/upload
+Content-Type: multipart/form-data; boundary=----Boundary
+Authorization: Bearer {{token}}
+
+------Boundary
+Content-Disposition: form-data; name="images"; filename="screenshot.png"
+Content-Type: image/png
+
+< ./test-images/screenshot.png
+------Boundary
+Content-Disposition: form-data; name="language"
+
+python
+------Boundary
+Content-Disposition: form-data; name="provider"
+
+anthropic
+------Boundary
+Content-Disposition: form-data; name="extractionModel"
+
+claude-opus-4-6
+------Boundary--
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SOLVE  (base64 JSON)
+# ══════════════════════════════════════════════════════════════════════════════
+
+### POST /api/ai/solve — problem info → solution (costs 1 credit)
+POST {{base}}/api/ai/solve
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "problemInfo": {
+    "problem_statement": "Given an array of integers, return indices of the two numbers that add up to target.",
+    "constraints": "2 <= nums.length <= 10^4, -10^9 <= nums[i] <= 10^9",
+    "example_input": "nums = [2,7,11,15], target = 9",
+    "example_output": "[0,1]"
+  },
+  "language": "python",
+  "provider": "anthropic",
+  "solutionModel": "claude-opus-4-6"
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROCESS  (combined extract + solve, base64 JSON)
+# ══════════════════════════════════════════════════════════════════════════════
+
+### POST /api/ai/process — base64 images → problem + solution in one shot (costs 1 credit)
+POST {{base}}/api/ai/process
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "images": ["<BASE64_STRING_HERE>"],
+  "language": "python",
+  "provider": "openai",
+  "extractionModel": "gpt-4o",
+  "solutionModel": "gpt-4o",
+  "conversationContext": ""
+}
+
+###
+
+### POST /api/ai/process/upload — upload real image files (multipart, new behaviour)
+POST {{base}}/api/ai/process/upload
+Content-Type: multipart/form-data; boundary=----Boundary
+Authorization: Bearer {{token}}
+
+------Boundary
+Content-Disposition: form-data; name="images"; filename="problem.png"
+Content-Type: image/png
+
+< ./test-images/problem.png
+------Boundary
+Content-Disposition: form-data; name="language"
+
+python
+------Boundary
+Content-Disposition: form-data; name="provider"
+
+openai
+------Boundary
+Content-Disposition: form-data; name="extractionModel"
+
+gpt-4o
+------Boundary
+Content-Disposition: form-data; name="solutionModel"
+
+gpt-4o
+------Boundary--
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DEBUG  (base64 JSON)
+# ══════════════════════════════════════════════════════════════════════════════
+
+### POST /api/ai/debug — base64 screenshots → debugging analysis (costs 1 credit)
+POST {{base}}/api/ai/debug
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "images": ["<BASE64_STRING_HERE>"],
+  "problemStatement": "Two Sum",
+  "language": "python",
+  "provider": "gemini",
+  "debuggingModel": "gemini-2.0-flash"
+}
+
+###
+
+### POST /api/ai/debug/upload — upload real image files (multipart, new behaviour)
+POST {{base}}/api/ai/debug/upload
+Content-Type: multipart/form-data; boundary=----Boundary
+Authorization: Bearer {{token}}
+
+------Boundary
+Content-Disposition: form-data; name="images"; filename="error-output.png"
+Content-Type: image/png
+
+< ./test-images/error-output.png
+------Boundary
+Content-Disposition: form-data; name="problemStatement"
+
+Two Sum
+------Boundary
+Content-Disposition: form-data; name="language"
+
+python
+------Boundary
+Content-Disposition: form-data; name="provider"
+
+gemini
+------Boundary
+Content-Disposition: form-data; name="debuggingModel"
+
+gemini-2.0-flash
+------Boundary--
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TRANSCRIBE
+# ══════════════════════════════════════════════════════════════════════════════
+
+### POST /api/ai/transcribe — base64 audio → text
+POST {{base}}/api/ai/transcribe
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "audio": "<BASE64_AUDIO_HERE>",
+  "mimeType": "audio/webm",
+  "provider": "openai",
+  "speechRecognitionModel": "whisper-1"
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ANSWER SUGGESTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
+### POST /api/ai/answer-suggestions — interview Q&A coaching
+POST {{base}}/api/ai/answer-suggestions
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "question": "Tell me about a time you resolved a conflict in your team.",
+  "conversationHistory": "",
+  "screenshotContext": "",
+  "candidateProfile": {
+    "name": "Sixtus",
+    "resume": "Full-stack developer with 3 years of experience. Built Chrome extensions and automation pipelines.",
+    "jobDescription": "Senior Software Engineer at a product company"
+  },
+  "provider": "anthropic",
+  "answerModel": "claude-opus-4-6"
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HEALTH
+# ══════════════════════════════════════════════════════════════════════════════
+
+### GET /health
+GET {{base}}/health

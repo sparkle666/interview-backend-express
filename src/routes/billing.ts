@@ -1,0 +1,248 @@
+// src/routes/billing.ts
+//
+// Paystack billing routes for plan upgrades.
+//
+// Flow:
+//   1. Electron calls POST /api/billing/checkout → gets back { authorization_url }
+//   2. Electron opens authorization_url in the system browser via shell.openExternal()
+//   3. User pays on Paystack's hosted page
+//   4. Paystack redirects browser to GET /api/billing/callback (user-facing confirmation)
+//   5. Paystack also POSTs charge.success to POST /api/billing/webhook (reliable trigger)
+//   6. Electron polls GET /api/users/me on window focus to pick up the new tier
+
+import { Router, Request, Response } from "express";
+import crypto from "crypto";
+import { requireAuth } from "../middleware/auth";
+import { Tier } from "../types";
+import { upgradeTierInSupabase } from "../services/supabaseAuth";
+
+const router = Router();
+
+// ── Plan catalogue ─────────────────────────────────────────────────────────
+// Amounts are in kobo (NGN × 100). Adjust to match your Paystack dashboard.
+const PLAN_PRICES: Record<string, { amount: number; tier: Tier; label: string }> = {
+  starter:   { amount:   500_00, tier: "starter",   label: "Starter Plan"   },
+  pro:       { amount:  1500_00, tier: "pro",       label: "Pro Plan"       },
+  unlimited: { amount:  5000_00, tier: "unlimited", label: "Unlimited Plan" },
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function paystackHeaders() {
+  return {
+    Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+    "Content-Type": "application/json",
+  };
+}
+
+async function verifyTransaction(reference: string) {
+  const res = await fetch(
+    `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+    { headers: paystackHeaders() }
+  );
+  return res.json() as Promise<any>;
+}
+
+// ── POST /api/billing/checkout ─────────────────────────────────────────────
+// Electron calls this to start a payment. Returns { authorization_url, reference }
+// so the desktop app can open the URL in the system browser.
+router.post("/billing/checkout", requireAuth, async (req: Request, res: Response) => {
+  const { plan } = req.body as { plan?: string };
+  const user = req.user!;
+
+  const planConfig = PLAN_PRICES[plan ?? ""];
+  if (!planConfig) {
+    res.status(400).json({
+      error: "Invalid plan",
+      validPlans: Object.keys(PLAN_PRICES),
+    });
+    return;
+  }
+
+  // Stable, idempotent reference tied to user + plan + minute bucket.
+  // Using a minute bucket means duplicate taps within the same minute
+  // return the same Paystack transaction rather than creating duplicates.
+  const minuteBucket = Math.floor(Date.now() / 60_000);
+  const reference = `${user.userId}-${plan}-${minuteBucket}`;
+
+  try {
+    const paystackRes = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: paystackHeaders(),
+      body: JSON.stringify({
+        email: user.email,
+        amount: planConfig.amount,
+        reference,
+        currency: "NGN",
+        metadata: {
+          userId: user.userId,
+          plan,
+          tier: planConfig.tier,
+        },
+        // Paystack sends the user here after payment in their browser.
+        callback_url: `${process.env.APP_BASE_URL}/api/billing/callback`,
+      }),
+    });
+
+    const data = await paystackRes.json() as any;
+
+    if (!data.status) {
+      console.error("[billing/checkout] Paystack error:", data);
+      res.status(502).json({ error: "Failed to initialise payment", detail: data.message });
+      return;
+    }
+
+    res.json({
+      authorization_url: data.data.authorization_url,
+      reference: data.data.reference,
+    });
+  } catch (err) {
+    console.error("[billing/checkout]", err);
+    res.status(500).json({ error: "Payment initialisation failed" });
+  }
+});
+
+// ── GET /api/billing/callback ──────────────────────────────────────────────
+// Paystack redirects the user's browser here after payment.
+// We verify the transaction and show a simple "return to app" page.
+// The webhook below is the reliable upgrade trigger — this is just UX.
+router.get("/billing/callback", async (req: Request, res: Response) => {
+  const reference = req.query.reference as string | undefined;
+
+  if (!reference) {
+    res.status(400).send(callbackPage("error", "Missing payment reference."));
+    return;
+  }
+
+  try {
+    const data = await verifyTransaction(reference);
+
+    if (data.data?.status === "success") {
+      const { userId, tier } = data.data.metadata ?? {};
+      if (userId && tier) {
+        await upgradeTierInSupabase(userId, tier as Tier);
+      }
+      res.send(callbackPage("success", tier));
+    } else {
+      res.send(callbackPage("pending", ""));
+    }
+  } catch (err) {
+    console.error("[billing/callback]", err);
+    res.send(callbackPage("error", "Something went wrong verifying your payment."));
+  }
+});
+
+// ── POST /api/billing/webhook ──────────────────────────────────────────────
+// Paystack POSTs signed events here. Register this URL in your Paystack dashboard:
+//   Settings → Webhooks → https://<your-domain>/api/billing/webhook
+//
+// This is the authoritative upgrade trigger — Paystack retries it on failure,
+// so upgrades aren't lost if the user closes the browser before the callback loads.
+router.post("/billing/webhook", async (req: Request, res: Response) => {
+  const signature = req.headers["x-paystack-signature"] as string | undefined;
+  const secret = process.env.PAYSTACK_SECRET_KEY;
+
+  if (!secret || !signature) {
+    res.status(401).send("Webhook secret not configured or signature missing");
+    return;
+  }
+
+  // Paystack signs the raw JSON body with HMAC-SHA512.
+  // express.json() already parsed it, so re-stringify for the hash.
+  const hash = crypto
+    .createHmac("sha512", secret)
+    .update(JSON.stringify(req.body))
+    .digest("hex");
+
+  if (hash !== signature) {
+    res.status(401).send("Invalid webhook signature");
+    return;
+  }
+
+  // Always ACK immediately — Paystack marks webhooks as failed if we don't
+  // respond within a few seconds, and it will retry for hours.
+  res.sendStatus(200);
+
+  // Process asynchronously after the ACK.
+  const event = req.body as { event: string; data: any };
+
+  if (event.event === "charge.success") {
+    const { userId, tier } = event.data?.metadata ?? {};
+    if (userId && tier) {
+      try {
+        await upgradeTierInSupabase(userId, tier as Tier);
+        console.log(`[billing/webhook] Upgraded user ${userId} to ${tier}`);
+      } catch (err) {
+        // Log prominently — this is worth alerting on in production.
+        console.error(`[billing/webhook] FAILED to upgrade user ${userId} to ${tier}:`, err);
+      }
+    }
+  }
+});
+
+// ── GET /api/billing/plan ──────────────────────────────────────────────────
+// Returns the user's current tier and the available plan catalogue.
+// Electron calls this on startup and after a focus-based poll.
+router.get("/billing/plan", requireAuth, (req: Request, res: Response) => {
+  res.json({
+    tier: req.user!.tier,
+    plans: Object.entries(PLAN_PRICES).map(([id, p]) => ({
+      id,
+      label: p.label,
+      amountKobo: p.amount,
+      tier: p.tier,
+    })),
+  });
+});
+
+// ── HTML helpers ───────────────────────────────────────────────────────────
+
+function callbackPage(state: "success" | "pending" | "error", detail: string): string {
+  const messages = {
+    success: {
+      icon: "✅",
+      heading: "Payment successful!",
+      body: `Your plan has been upgraded to <strong>${detail}</strong>. You can close this tab and return to the app.`,
+    },
+    pending: {
+      icon: "⏳",
+      heading: "Payment not confirmed yet",
+      body: "If you completed payment, wait a moment and check your plan inside the app. Paystack may still be processing.",
+    },
+    error: {
+      icon: "❌",
+      heading: "Something went wrong",
+      body: detail || "Please return to the app and try again.",
+    },
+  };
+
+  const m = messages[state];
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment ${state}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+           display: flex; align-items: center; justify-content: center;
+           min-height: 100vh; margin: 0; background: #f9fafb; color: #111; }
+    .card { text-align: center; background: #fff; border-radius: 12px;
+            padding: 48px 40px; box-shadow: 0 4px 24px rgba(0,0,0,.08);
+            max-width: 420px; width: 90%; }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+    p  { color: #555; line-height: 1.6; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${m.icon}</div>
+    <h1>${m.heading}</h1>
+    <p>${m.body}</p>
+  </div>
+</body>
+</html>`;
+}
+
+export default router;

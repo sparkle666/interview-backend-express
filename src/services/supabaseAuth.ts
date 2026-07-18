@@ -408,3 +408,40 @@ export async function forgotPasswordWithSupabase(
     throw new SupabaseAuthError("Unable to send password reset email right now", 500);
   }
 }
+// ── upgradeTierInSupabase ──────────────────────────────────────────────────
+//
+// Used by billing routes (webhook + callback) to promote a user's tier after
+// a successful Paystack payment.
+//
+// Updates both tables that carry tier information:
+//   • profiles      – runtime queries read from here
+//   • user_metadata – consulted on login / token refresh so the new tier is
+//                     reflected immediately in the next JWT
+//
+export async function upgradeTierInSupabase(userId: string, tier: Tier): Promise<void> {
+  const client = getSupabaseAdminClient();
+
+  // 1. Update the profiles table (primary runtime source)
+  const { error: profileError } = await client
+    .from("profiles")
+    .update({ tier })
+    .eq("id", userId);
+
+  if (profileError) {
+    throw new Error(`[upgradeTierInSupabase] profiles update failed for ${userId}: ${profileError.message}`);
+  }
+
+  // 2. Update Supabase user_metadata so the tier is embedded in the next
+  //    access token issued on refresh, without requiring a fresh login.
+  const { error: metaError } = await client.auth.admin.updateUserById(userId, {
+    user_metadata: { tier },
+  });
+
+  if (metaError) {
+    // Log but don't throw — the profiles row is the source of truth at runtime.
+    // The metadata will self-heal on the next login.
+    console.error(
+      `[upgradeTierInSupabase] user_metadata update failed for ${userId}: ${metaError.message}`
+    );
+  }
+}

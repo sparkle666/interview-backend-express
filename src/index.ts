@@ -7,6 +7,7 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import aiRoutes from "./routes/ai";
 import authRoutes from "./routes/auth";
+import billingRoutes from "./routes/billing";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -33,7 +34,7 @@ app.use(
             }
           }
         : true,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -56,6 +57,7 @@ app.use(
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use("/api", authRoutes);
+app.use("/api", billingRoutes);
 app.use("/api/ai", aiRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────

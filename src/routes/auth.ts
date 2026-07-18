@@ -170,7 +170,14 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
 
   try {
     const result = await forgotPasswordWithSupabase(parsed.data.email);
-    res.json({ success: true, ...result });
+    // res.json({ success: true, ...result });
+    const { success, ...rest } = result;
+
+    res.json({
+      success: true,
+      ...rest,
+    });
+
   } catch (err) {
     handleAuthError(err, "/auth/forgot-password", res);
   }

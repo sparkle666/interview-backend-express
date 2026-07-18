@@ -1,6 +1,6 @@
 ### Variables
 @baseUrl = http://localhost:3000
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyLTEyMyIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSIsInRpZXIiOiJmcmVlIiwiaWF0IjoxNzg0MjU2NDc3LCJleHAiOjE3ODY4NDg0Nzd9.07tORBpS0zJYMxpq-4OEmCumrPA1MuRWmLr2TkygH54
+@token = eyJhbGciOiJFUzI1NiIsImtpZCI6ImNjOWM5OWQyLWI2MWItNDE5NS1iZDJmLTdjYzA0ODY3MjZjOCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3hwZGVrc3RpYnVyZXl6aGtmdHZxLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI0ZTk0MDgzNS1jOGI5LTQ5NGQtYTA1Zi1jMDU4NDM3MzBmYmUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzg0MzM2MTQzLCJpYXQiOjE3ODQzMzI1NDMsImVtYWlsIjoiYWRtaW5AYWRtaW4uY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJmdWxsX25hbWUiOiJBZG1pbiBVc2VyIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI0ZTk0MDgzNS1jOGI5LTQ5NGQtYTA1Zi1jMDU4NDM3MzBmYmUiLCJ0aWVyIjoiZnJlZSJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzg0MzMyNTQzfV0sInNlc3Npb25faWQiOiJhZmEyZjQ1ZC01YjMwLTQyZjAtOWUyMC0yY2YwNDI0YTZmNDciLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.h7SHZGnp7IPxp5B4dZX4I_90ft84AqCy3wuv_fDMThBmh2jWOaGcyDtPHRyEJDrfcFsGOxj0YNPo8gGt0e1smA
 @imageBase64 = REPLACE_WITH_BASE64_IMAGE
 
 # To convert a local image to base64 in PowerShell:
@@ -12,19 +12,65 @@
 ### Health check
 GET {{baseUrl}}/health
 
-### Auth - create a test JWT
-POST {{baseUrl}}/api/auth/token
+### Auth - create a legacy test JWT (still supported)
+# POST {{baseUrl}}/api/auth/token
+# Content-Type: application/json
+
+# {
+#   "userId": "user-123",
+#   "email": "test@example.com",
+#   "tier": "free"
+# }
+
+### Auth - register a new user
+POST {{baseUrl}}/api/auth/register
 Content-Type: application/json
 
 {
-  "userId": "user-123",
-  "email": "test@example.com",
+  "email": "admin2@admin.com",
+  "password": "strongpassword123",
+  "name": "Admin2 User",
+  "tier": "free"
+}
+
+### Auth - login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@admin.com",
+  "password": "strongpassword123",
   "tier": "free"
 }
 
 ### Auth - get current user info
 GET {{baseUrl}}/api/auth/me
 Authorization: Bearer {{token}}
+
+### Auth - get current user profile via new route
+GET {{baseUrl}}/api/users/me
+Authorization: Bearer {{token}}
+
+### Auth - refresh session
+POST {{baseUrl}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "YOUR_REFRESH_TOKEN_HERE"
+}
+
+### Auth - forgot password
+POST {{baseUrl}}/api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "test@example.com"
+}
+
+### Auth - logout
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer {{token}}
+Content-Type: application/json
 
 ### AI - extract problem info from screenshots
 POST {{baseUrl}}/api/ai/extract
@@ -150,3 +196,37 @@ Content-Disposition: form-data; name="extractionModel"
 gpt-4o-mini
 ------Boundary--
 
+
+
+
+
+### AI - Solve quiz from uploaded image
+POST {{baseUrl}}/api/ai/quiz/upload
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----Boundary
+
+------Boundary
+Content-Disposition: form-data; name="images"; filename="quiz.png"
+Content-Type: image/png
+
+< ./image.png
+------Boundary
+Content-Disposition: form-data; name="provider"
+
+openai
+------Boundary
+Content-Disposition: form-data; name="extractionModel"
+
+gpt-5.5
+------Boundary--
+
+### AI - Solve quiz using base64 JSON
+POST {{baseUrl}}/api/ai/quiz
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "images": ["data:image/png;base64,{{imageBase64}}"],
+  "provider": "openai",
+  "extractionModel": "gpt-5.5"
+}

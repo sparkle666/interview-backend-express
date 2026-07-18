@@ -7,8 +7,10 @@
 // The Electron app stores the token locally and sends it with every request.
 
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { createClient } from "@supabase/supabase-js";
 import { JWTPayload, Tier } from "../types";
+
+const loggedOutTokens = new Set<string>();
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -19,7 +21,28 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+function getSupabaseAuthClient() {
+  const url = process.env.SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    throw new Error("Supabase auth not configured");
+  }
+
+  return createClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
+export function markTokenAsLoggedOut(token: string): void {
+  loggedOutTokens.add(token);
+}
+
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Missing or invalid Authorization header" });
@@ -27,21 +50,31 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 
   const token = header.slice(7);
+
+  if (loggedOutTokens.has(token)) {
+    res.status(401).json({ error: "Token revoked" });
+    return;
+  }
+
   try {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw new Error("JWT_SECRET not configured");
-    const payload = jwt.verify(token, secret) as JWTPayload;
-    req.user = payload;
+    const client = getSupabaseAuthClient();
+    const { data, error } = await client.auth.getUser(token);
+
+    if (error || !data.user) {
+      throw new Error(error?.message || "Supabase auth validation failed");
+    }
+
+    const tier = (data.user.user_metadata?.tier as Tier | undefined) || "free";
+
+    req.user = {
+      userId: data.user.id,
+      email: data.user.email || "",
+      tier,
+    };
+
     next();
-  } catch (err) {
+    return;
+  } catch {
     res.status(401).json({ error: "Invalid or expired token" });
   }
-}
-
-// ── Utility: generate a token (use this in your auth/subscription system) ────
-
-export function issueToken(userId: string, email: string, tier: Tier): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error("JWT_SECRET not configured");
-  return jwt.sign({ userId, email, tier }, secret, { expiresIn: "30d" });
 }

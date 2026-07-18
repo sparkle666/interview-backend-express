@@ -14,6 +14,25 @@ import {
   DebugResult,
 } from "../types";
 
+// ── Quiz types ────────────────────────────────────────────────────────────────
+
+export interface QuizQuestion {
+  question: string;
+  questionNumber: number;
+  answer: string;
+  explanation: string;
+  options?: string[];
+  correctOption?: string;
+  questionType: "multiple_choice" | "true_false" | "short_answer" | "essay";
+}
+
+export interface QuizResult {
+  totalQuestions: number;
+  questions: QuizQuestion[];
+  subject?: string | null;
+  instructions?: string | null;
+}
+
 // ── Gemini types ──────────────────────────────────────────────────────────────
 
 interface GeminiPart {
@@ -52,6 +71,8 @@ function stripJsonFences(text: string): string {
   return text.replace(/```json|```/g, "").trim();
 }
 
+const OPENAI_MODEL = "gpt-5.5";
+
 function formatError(provider: APIProvider, error: unknown, context: string): string {
   const e = error as Record<string, unknown>;
   const status =
@@ -82,29 +103,40 @@ export async function extractProblem(
 
   if (provider === "openai") {
     const client = makeOpenAI();
-    const response = await client.chat.completions.create({
-      model: extractionModel || "gpt-4o",
-      max_completion_tokens: 4000,
-      temperature: 1,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a coding challenge interpreter. Return only valid JSON with: problem_statement, constraints, example_input, example_output.",
-        },
+    const content: OpenAI.Responses.ResponseInputMessageContentList = [
+      {
+        type: "input_text" as const,
+        text: basePrompt,
+      },
+      ...images.map((data) => ({
+        type: "input_image" as const,
+        image_url: `data:image/png;base64,${data}`,
+        detail: "auto" as const,
+      })),
+    ];
+
+    const response = await client.responses.create({
+      model: OPENAI_MODEL,
+      instructions:
+        "You are a coding challenge interpreter. Return only valid JSON with: problem_statement, constraints, example_input, example_output.",
+      input: [
         {
           role: "user",
-          content: [
-            { type: "text", text: basePrompt },
-            ...images.map((data) => ({
-              type: "image_url" as const,
-              image_url: { url: `data:image/png;base64,${data}` },
-            })),
-          ],
+          content,
         },
       ],
+      text: {
+        format: {
+          type: "json_object",
+        },
+      },
+      max_output_tokens: 4000,
+      temperature: 1,
     });
-    const text = response.choices[0].message.content ?? "";
+    const text = response.output_text ?? "";
+    console.log(`[AI Service] OpenAI extract finished`, {
+      textLength: text.length,
+    });
     return JSON.parse(stripJsonFences(text));
   }
 
@@ -180,7 +212,7 @@ Respond with:
   if (provider === "openai") {
     const client = makeOpenAI();
     const res = await client.chat.completions.create({
-      model: solutionModel || "gpt-4o",
+      model: OPENAI_MODEL,
       max_completion_tokens: 4000,
       temperature: 1,
       messages: [
@@ -193,6 +225,9 @@ Respond with:
       ],
     });
     responseContent = res.choices[0].message.content ?? "";
+    console.log(`[AI Service] OpenAI solve finished`, {
+      responseLength: responseContent.length,
+    });
   } else if (provider === "gemini") {
     const key = getGeminiKey();
     const res = await axios.post<GeminiResponse>(
@@ -302,7 +337,7 @@ Use markdown code blocks with language tags for any code examples.`;
   if (provider === "openai") {
     const client = makeOpenAI();
     const res = await client.chat.completions.create({
-      model: debuggingModel || "gpt-4o",
+      model: OPENAI_MODEL,
       max_completion_tokens: 4000,
       temperature: 1,
       messages: [
@@ -454,7 +489,7 @@ Provide 3 distinct answer suggestions that are natural and conversational. Retur
   if (provider === "openai") {
     const client = makeOpenAI();
     const res = await client.chat.completions.create({
-      model: answerModel || "gpt-4o",
+      model: OPENAI_MODEL,
       max_completion_tokens: 1000,
       temperature: 0.8,
       messages: [{ role: "user", content: prompt }],
@@ -492,4 +527,124 @@ Provide 3 distinct answer suggestions that are natural and conversational. Retur
   } catch {
     return { suggestions: [text], reasoning: "" };
   }
+}
+
+// ── 6. Solve quiz from screenshots ───────────────────────────────────────────
+
+export async function solveQuiz(
+  images: string[],
+  provider: APIProvider,
+  extractionModel: string
+): Promise<QuizResult> {
+  const systemPrompt = `You are an expert quiz solver. You will be given screenshots of quiz/exam questions.
+Your task is to:
+1. Extract ALL questions visible in the screenshots
+2. Identify the question type (multiple_choice, true_false, short_answer, essay)
+3. For multiple choice questions, identify the correct option (A, B, C, or D)
+4. Provide a clear answer and brief explanation for each question
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no code fences):
+{
+  "subject": "subject or topic name if visible, or null",
+  "instructions": "general instructions if visible, or null",
+  "totalQuestions": <number>,
+  "questions": [
+    {
+      "questionNumber": <number>,
+      "questionType": "multiple_choice" | "true_false" | "short_answer" | "essay",
+      "question": "the full question text",
+      "options": ["A. option1", "B. option2", "C. option3", "D. option4"] or null,
+      "correctOption": "A" or "B" or "C" or "D" or "True" or "False" or null,
+      "answer": "the complete answer",
+      "explanation": "brief explanation of why this is correct"
+    }
+  ]
+}`;
+
+  const userPrompt = `Please extract and solve ALL quiz questions from these screenshots. Return only the JSON object.`;
+
+  let rawText: string;
+
+  if (provider === "openai") {
+    const client = makeOpenAI();
+    const content: OpenAI.Responses.ResponseInputMessageContentList = [
+      {
+        type: "input_text" as const,
+        text: userPrompt,
+      },
+      ...images.map((data) => ({
+        type: "input_image" as const,
+        image_url: `data:image/png;base64,${data}`,
+        detail: "auto" as const,
+      })),
+    ];
+
+    const response = await client.responses.create({
+      model: OPENAI_MODEL,
+      instructions: systemPrompt,
+      input: [
+        {
+          role: "user",
+          content,
+        },
+      ],
+      text: {
+        format: {
+          type: "json_object",
+        },
+      },
+      max_output_tokens: 4000,
+      temperature: 1,
+    });
+    rawText = response.output_text ?? "";
+    console.log(`[AI Service] OpenAI quiz finished`, {
+      responseLength: rawText.length,
+    });
+  } else if (provider === "gemini") {
+    const key = getGeminiKey();
+    const parts: GeminiPart[] = [
+      { text: `${systemPrompt}\n\n${userPrompt}` },
+      ...images.map((data) => ({ inlineData: { mimeType: "image/png", data } })),
+    ];
+    const res = await axios.post<GeminiResponse>(
+      `https://generativelanguage.googleapis.com/v1beta/models/${extractionModel || "gemini-2.0-flash"}:generateContent?key=${key}`,
+      {
+        contents: [{ role: "user", parts }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 4000 },
+      }
+    );
+    rawText = res.data.candidates[0].content.parts[0].text;
+  } else if (provider === "anthropic") {
+    const client = makeAnthropic();
+    const response = await client.messages.create({
+      model: extractionModel || "claude-3-7-sonnet-20250219",
+      max_tokens: 4000,
+      temperature: 0.1,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `${systemPrompt}\n\n${userPrompt}` },
+            ...images.map((data) => ({
+              type: "image" as const,
+              source: { type: "base64" as const, media_type: "image/png" as const, data },
+            })),
+          ],
+        },
+      ],
+    });
+    rawText = (response.content[0] as { type: "text"; text: string }).text;
+  } else {
+    throw new Error(`Unknown provider: ${provider}`);
+  }
+
+  const cleaned = stripJsonFences(rawText);
+  const parsed = JSON.parse(cleaned) as QuizResult;
+
+  if (!parsed.questions || !Array.isArray(parsed.questions)) {
+    throw new Error("Failed to extract questions. Ensure screenshots contain visible quiz questions.");
+  }
+
+  parsed.totalQuestions = parsed.questions.length;
+  return parsed;
 }

@@ -14,6 +14,7 @@ import {
   debugSolution,
   transcribeAudio,
   generateAnswerSuggestions,
+  solveQuiz,
 } from "../services/aiService";
 
 // ── Multipart upload middleware ───────────────────────────────────────────────
@@ -43,16 +44,19 @@ router.use(requireAuth);
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function limitCheck(req: Request, res: Response): boolean {
+async function limitCheck(req: Request, res: Response): Promise<boolean> {
   const user = req.user!;
-  if (!usageTracker.canUse(user.userId, user.tier)) {
-    const summary = usageTracker.summary(user.userId, user.tier);
+  const canUse = await usageTracker.canUse(user.userId, user.tier);
+
+  if (!canUse) {
+    const summary = await usageTracker.summary(user.userId, user.tier);
     res.status(429).json({
       error: `Daily limit reached for your ${user.tier} plan (${summary.limit}/day). Upgrade to continue.`,
       usage: summary,
     });
     return false;
   }
+
   return true;
 }
 
@@ -68,7 +72,7 @@ const extractSchema = z.object({
 });
 
 router.post("/extract", async (req: Request, res: Response) => {
-  if (!limitCheck(req, res)) return;
+  if (!(await limitCheck(req, res))) return;
 
   const parsed = extractSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -78,7 +82,16 @@ router.post("/extract", async (req: Request, res: Response) => {
 
   const { images, language, provider, extractionModel, conversationContext } = parsed.data;
 
+  console.log(`[AI] /extract request`, {
+    userId: req.user?.userId,
+    provider,
+    imageCount: images.length,
+    language,
+    conversationContextLength: conversationContext?.length || 0,
+  });
+
   try {
+    const startedAt = Date.now();
     const problemInfo = await extractProblem(
       images,
       language,
@@ -86,6 +99,11 @@ router.post("/extract", async (req: Request, res: Response) => {
       extractionModel,
       conversationContext
     );
+
+    console.log(`[AI] /extract completed in ${Date.now() - startedAt}ms`, {
+      userId: req.user?.userId,
+      provider,
+    });
 
     // Don't increment here — extraction is free, solution generation costs a credit
     res.json({ success: true, problemInfo });
@@ -111,7 +129,7 @@ const solveSchema = z.object({
 });
 
 router.post("/solve", async (req: Request, res: Response) => {
-  if (!limitCheck(req, res)) return;
+  if (!(await limitCheck(req, res))) return;
 
   const parsed = solveSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -121,12 +139,25 @@ router.post("/solve", async (req: Request, res: Response) => {
 
   const { problemInfo, language, provider, solutionModel } = parsed.data;
 
+  console.log(`[AI] /solve request`, {
+    userId: req.user?.userId,
+    provider,
+    language,
+    problemLength: problemInfo.problem_statement?.length || 0,
+  });
+
   try {
+    const startedAt = Date.now();
     const solution = await generateSolution(problemInfo, language, provider, solutionModel);
 
+    console.log(`[AI] /solve completed in ${Date.now() - startedAt}ms`, {
+      userId: req.user?.userId,
+      provider,
+    });
+
     // Increment after a successful generation
-    usageTracker.increment(req.user!.userId);
-    const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+    await usageTracker.increment(req.user!.userId);
+    const usage = await usageTracker.summary(req.user!.userId, req.user!.tier);
 
     res.json({ success: true, solution, usage });
   } catch (err: unknown) {
@@ -148,7 +179,7 @@ const processSchema = z.object({
 });
 
 router.post("/process", async (req: Request, res: Response) => {
-  if (!limitCheck(req, res)) return;
+  if (!(await limitCheck(req, res))) return;
 
   const parsed = processSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -170,8 +201,8 @@ router.post("/process", async (req: Request, res: Response) => {
 
     const solution = await generateSolution(problemInfo, language, provider, solutionModel);
 
-    usageTracker.increment(req.user!.userId);
-    const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+    await usageTracker.increment(req.user!.userId);
+    const usage = await usageTracker.summary(req.user!.userId, req.user!.tier);
 
     res.json({ success: true, problemInfo, solution, usage });
   } catch (err: unknown) {
@@ -192,7 +223,7 @@ const debugSchema = z.object({
 });
 
 router.post("/debug", async (req: Request, res: Response) => {
-  if (!limitCheck(req, res)) return;
+  if (!(await limitCheck(req, res))) return;
 
   const parsed = debugSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -211,8 +242,8 @@ router.post("/debug", async (req: Request, res: Response) => {
       debuggingModel
     );
 
-    usageTracker.increment(req.user!.userId);
-    const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+    await usageTracker.increment(req.user!.userId);
+    const usage = await usageTracker.summary(req.user!.userId, req.user!.tier);
 
     res.json({ success: true, result, usage });
   } catch (err: unknown) {
@@ -300,6 +331,102 @@ router.get("/usage", (req: Request, res: Response) => {
   const user = req.user!;
   res.json({ success: true, usage: usageTracker.summary(user.userId, user.tier) });
 });
+
+// ── POST /api/ai/quiz ─────────────────────────────────────────────────────────
+// Extract and solve all quiz questions from screenshots (costs 1 credit)
+
+const quizSchema = z.object({
+  images: z.array(z.string().min(1)).min(1).max(5),
+  provider: z.enum(["openai", "gemini", "anthropic"]),
+  extractionModel: z.string(),
+});
+
+router.post("/quiz", async (req: Request, res: Response) => {
+  if (!limitCheck(req, res)) return;
+
+  const parsed = quizSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
+
+  const { images, provider, extractionModel } = parsed.data;
+
+  console.log(`[AI] /quiz request`, {
+    userId: req.user?.userId,
+    provider,
+    imageCount: images.length,
+    extractionModel,
+  });
+
+  try {
+    const startedAt = Date.now();
+    const result = await solveQuiz(images, provider, extractionModel);
+
+    usageTracker.increment(req.user!.userId);
+    const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+
+    res.json({ success: true, result, usage });
+  } catch (err: unknown) {
+    console.error("[/quiz]", err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ── POST /api/ai/quiz/upload ─────────────────────────────────────────────────
+// Multipart alternative to /quiz — send real image files instead of base64.
+// Form fields: images (1-5 files), provider, extractionModel
+router.post(
+  "/quiz/upload",
+  upload.array("images", 5),
+  async (req: Request, res: Response) => {
+    if (!limitCheck(req, res)) return;
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: "At least one image file is required" });
+      return;
+    }
+
+    const parsed = quizSchema.safeParse({
+      images: filesToBase64(files),
+      provider: req.body.provider,
+      extractionModel: req.body.extractionModel,
+    });
+
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      return;
+    }
+
+    const { images, provider, extractionModel } = parsed.data;
+
+    console.log(`[AI] /quiz/upload request`, {
+      userId: req.user?.userId,
+      provider,
+      imageCount: images.length,
+      extractionModel,
+    });
+
+    try {
+      const startedAt = Date.now();
+      const result = await solveQuiz(images, provider, extractionModel);
+
+      console.log(`[AI] /quiz/upload completed in ${Date.now() - startedAt}ms`, {
+        userId: req.user?.userId,
+        provider,
+      });
+
+      usageTracker.increment(req.user!.userId);
+      const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+
+      res.json({ success: true, result, usage });
+    } catch (err: unknown) {
+      console.error("[/quiz/upload]", err);
+      res.status(500).json({ error: (err as Error).message });
+    }
+  }
+);
 
 // ── POST /api/ai/extract/upload ───────────────────────────────────────────────
 // Multipart alternative to /extract — send real image files instead of base64.

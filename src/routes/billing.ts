@@ -23,7 +23,7 @@ const router = Router();
 const PLAN_PRICES: Record<string, { amount: number; tier: Tier; label: string }> = {
   starter:   { amount:   2000_00, tier: "starter",   label: "Starter Plan"   },
   pro:       { amount:  5000_00, tier: "pro",       label: "Pro Plan"       },
-  legend: { amount:  1000_00, tier: "legend", label: "Legend Plan" },
+  legend: { amount:  10000_00, tier: "legend", label: "Legend Plan" },
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────

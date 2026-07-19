@@ -103,6 +103,7 @@ router.post("/extract", async (req: Request, res: Response) => {
     console.log(`[AI] /extract completed in ${Date.now() - startedAt}ms`, {
       userId: req.user?.userId,
       provider,
+      extractionModel,
     });
 
     // Don't increment here — extraction is free, solution generation costs a credit
@@ -327,9 +328,10 @@ router.post("/answer-suggestions", async (req: Request, res: Response) => {
 // ── GET /api/ai/usage ────────────────────────────────────────────────────────
 // Let the app show the user how many credits they have left
 
-router.get("/usage", (req: Request, res: Response) => {
+router.get("/usage", async (req: Request, res: Response) => {
   const user = req.user!;
-  res.json({ success: true, usage: usageTracker.summary(user.userId, user.tier) });
+  const usage = await usageTracker.summary(user.userId, user.tier);
+  res.json({ success: true, usage });
 });
 
 // ── POST /api/ai/quiz ─────────────────────────────────────────────────────────
@@ -342,7 +344,7 @@ const quizSchema = z.object({
 });
 
 router.post("/quiz", async (req: Request, res: Response) => {
-  if (!limitCheck(req, res)) return;
+  if (!(await limitCheck(req, res))) return;
 
   const parsed = quizSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -363,8 +365,8 @@ router.post("/quiz", async (req: Request, res: Response) => {
     const startedAt = Date.now();
     const result = await solveQuiz(images, provider, extractionModel);
 
-    usageTracker.increment(req.user!.userId);
-    const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+    await usageTracker.increment(req.user!.userId);
+    const usage = await usageTracker.summary(req.user!.userId, req.user!.tier);
 
     res.json({ success: true, result, usage });
   } catch (err: unknown) {
@@ -380,7 +382,7 @@ router.post(
   "/quiz/upload",
   upload.array("images", 5),
   async (req: Request, res: Response) => {
-    if (!limitCheck(req, res)) return;
+    if (!(await limitCheck(req, res))) return;
 
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
@@ -415,10 +417,11 @@ router.post(
       console.log(`[AI] /quiz/upload completed in ${Date.now() - startedAt}ms`, {
         userId: req.user?.userId,
         provider,
+        extractionModel,
       });
 
-      usageTracker.increment(req.user!.userId);
-      const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+      await usageTracker.increment(req.user!.userId);
+      const usage = await usageTracker.summary(req.user!.userId, req.user!.tier);
 
       res.json({ success: true, result, usage });
     } catch (err: unknown) {
@@ -437,7 +440,7 @@ router.post(
   "/extract/upload",
   upload.array("images", 5),
   async (req: Request, res: Response) => {
-    if (!limitCheck(req, res)) return;
+    if (!(await limitCheck(req, res))) return;
 
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
@@ -485,7 +488,7 @@ router.post(
   "/process/upload",
   upload.array("images", 5),
   async (req: Request, res: Response) => {
-    if (!limitCheck(req, res)) return;
+    if (!(await limitCheck(req, res))) return;
 
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
@@ -520,8 +523,8 @@ router.post(
       );
       const solution = await generateSolution(problemInfo, language, provider, solutionModel);
 
-      usageTracker.increment(req.user!.userId);
-      const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+      await usageTracker.increment(req.user!.userId);
+      const usage = await usageTracker.summary(req.user!.userId, req.user!.tier);
 
       res.json({ success: true, problemInfo, solution, usage });
     } catch (err: unknown) {
@@ -540,7 +543,7 @@ router.post(
   "/debug/upload",
   upload.array("images", 10),
   async (req: Request, res: Response) => {
-    if (!limitCheck(req, res)) return;
+    if (!(await limitCheck(req, res))) return;
 
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
@@ -572,8 +575,8 @@ router.post(
         debuggingModel
       );
 
-      usageTracker.increment(req.user!.userId);
-      const usage = usageTracker.summary(req.user!.userId, req.user!.tier);
+      await usageTracker.increment(req.user!.userId);
+      const usage = await usageTracker.summary(req.user!.userId, req.user!.tier);
 
       res.json({ success: true, result, usage });
     } catch (err: unknown) {

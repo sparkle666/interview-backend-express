@@ -2,7 +2,7 @@
 
 export type APIProvider = "openai" | "gemini" | "anthropic";
 
-export type Tier = "free" | "starter" | "pro" | "unlimited";
+export type Tier = "free" | "starter" | "pro" | "legend";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 

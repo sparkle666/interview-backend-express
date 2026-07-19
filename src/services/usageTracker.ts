@@ -6,10 +6,10 @@ import { createClient } from "@supabase/supabase-js";
 import { Tier } from "../types";
 
 const TIER_LIMITS: Record<Tier, number> = {
-  free: Number(process.env.TIER_FREE_DAILY_LIMIT) || 3,
-  starter: Number(process.env.TIER_STARTER_DAILY_LIMIT) || 20,
-  pro: Number(process.env.TIER_PRO_DAILY_LIMIT) || 100,
-  unlimited: Number(process.env.TIER_UNLIMITED_DAILY_LIMIT) || 999_999,
+  free: Number(process.env.TIER_FREE_MONTHLY_LIMIT) || 3,
+  starter: Number(process.env.TIER_STARTER_MONTHLY_LIMIT) || 20,
+  pro: Number(process.env.TIER_PRO_MONTHLY_LIMIT) || 100,
+  legend: Number(process.env.TIER_LEGEND_MONTHLY_LIMIT) || 200,
 };
 
 interface UserUsage {
@@ -17,8 +17,13 @@ interface UserUsage {
   date: string;
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+// function today(): string {
+//   return new Date().toISOString().slice(0, 10);
+// }
+
+
+function thisMonth(): string {
+  return new Date().toISOString().slice(0, 7); // "2026-07"
 }
 
 function getSupabaseConfig() {
@@ -47,13 +52,13 @@ function getSupabaseClient() {
 
 async function getUsageRow(userId: string): Promise<UserUsage | null> {
   const client = getSupabaseClient();
-  const date = today();
+  const date = thisMonth();
 
   const { data, error } = await client
     .from("user_usage")
-    .select("count, usage_date")
+    .select("count, usage_month")
     .eq("user_id", userId)
-    .eq("usage_date", date)
+    .eq("usage_month", date)
     .maybeSingle();
 
   if (error) {
@@ -67,14 +72,14 @@ async function getUsageRow(userId: string): Promise<UserUsage | null> {
 
   return {
     count: Number(data.count || 0),
-    date: String(data.usage_date || date),
+    date: String(data.usage_month || date),
   };
 }
 
 export const usageTracker = {
   async getUsage(userId: string): Promise<UserUsage> {
     const usage = await getUsageRow(userId);
-    return usage || { count: 0, date: today() };
+    return usage || { count: 0, date: thisMonth() };
   },
 
   async getCount(userId: string): Promise<number> {
@@ -93,13 +98,13 @@ export const usageTracker = {
 
   async increment(userId: string): Promise<void> {
     const client = getSupabaseClient();
-    const date = today();
+    const date = thisMonth();
 
     const { data, error } = await client
       .from("user_usage")
       .select("count")
       .eq("user_id", userId)
-      .eq("usage_date", date)
+      .eq("usage_month", date)
       .maybeSingle();
 
     if (error && error.code !== "PGRST116") {
@@ -112,11 +117,11 @@ export const usageTracker = {
     const { error: upsertError } = await client.from("user_usage").upsert(
       {
         user_id: userId,
-        usage_date: date,
+        usage_month: date,
         count: nextCount,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "user_id,usage_date" }
+      { onConflict: "user_id,usage_month" }
     );
 
     if (upsertError) {

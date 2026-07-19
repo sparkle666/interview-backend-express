@@ -21,9 +21,9 @@ const router = Router();
 // ── Plan catalogue ─────────────────────────────────────────────────────────
 // Amounts are in kobo (NGN × 100). Adjust to match your Paystack dashboard.
 const PLAN_PRICES: Record<string, { amount: number; tier: Tier; label: string }> = {
-  starter:   { amount:   500_00, tier: "starter",   label: "Starter Plan"   },
-  pro:       { amount:  1500_00, tier: "pro",       label: "Pro Plan"       },
-  unlimited: { amount:  5000_00, tier: "unlimited", label: "Unlimited Plan" },
+  starter:   { amount:   2000_00, tier: "starter",   label: "Starter Plan"   },
+  pro:       { amount:  5000_00, tier: "pro",       label: "Pro Plan"       },
+  legend: { amount:  1000_00, tier: "legend", label: "Legend Plan" },
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────

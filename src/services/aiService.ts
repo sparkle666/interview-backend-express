@@ -71,7 +71,8 @@ function stripJsonFences(text: string): string {
   return text.replace(/```json|```/g, "").trim();
 }
 
-const OPENAI_MODEL = "gpt-5.5";
+// const OPENAI_MODEL = "gpt-5.5";
+const OPENAI_MODEL = "gpt-5.4-mini";
 
 function formatError(provider: APIProvider, error: unknown, context: string): string {
   const e = error as Record<string, unknown>;

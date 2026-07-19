@@ -27,7 +27,7 @@ const router = Router();
 // NOTE: tier is intentionally excluded from registerSchema and loginSchema.
 // Tier is always resolved server-side from Supabase user_metadata, never
 // trusted from the client. Accepting it from the client would allow privilege
-// escalation (e.g. self-assigning "unlimited").
+// escalation (e.g. self-assigning "legend").
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),

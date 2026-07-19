@@ -1,20 +1,7 @@
 ### Variables
-@baseUrl = http://localhost:3000
-@token = eyJhbGciOiJFUzI1NiIsImtpZCI6ImNjOWM5OWQyLWI2MWItNDE5NS1iZDJmLTdjYzA0ODY3MjZjOCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3hwZGVrc3RpYnVyZXl6aGtmdHZxLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI0ZTk0MDgzNS1jOGI5LTQ5NGQtYTA1Zi1jMDU4NDM3MzBmYmUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzg0MzM2MTQzLCJpYXQiOjE3ODQzMzI1NDMsImVtYWlsIjoiYWRtaW5AYWRtaW4uY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJmdWxsX25hbWUiOiJBZG1pbiBVc2VyIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI0ZTk0MDgzNS1jOGI5LTQ5NGQtYTA1Zi1jMDU4NDM3MzBmYmUiLCJ0aWVyIjoiZnJlZSJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzg0MzMyNTQzfV0sInNlc3Npb25faWQiOiJhZmEyZjQ1ZC01YjMwLTQyZjAtOWUyMC0yY2YwNDI0YTZmNDciLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.h7SHZGnp7IPxp5B4dZX4I_90ft84AqCy3wuv_fDMThBmh2jWOaGcyDtPHRyEJDrfcFsGOxj0YNPo8gGt0e1smA
-@imageBase64 = REPLACE_WITH_BASE64_IMAGE
-
-# To convert a local image to base64 in PowerShell:
-# [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\your-image.png"))
-# Then paste the output into @imageBase64 above.
-# If your file is JPG/JPEG, change the prefix to data:image/jpeg;base64,
-# and for WebP use data:image/webp;base64,
-
-### Health check
-GET {{baseUrl}}/health
-
-### Auth - create a legacy test JWT (still supported)
-# POST {{baseUrl}}/api/auth/token
-# Content-Type: application/json
+# @baseUrl = http://localhost:3000
+@baseUrl = https://interview-backend-express.vercel.app
+@token =eyJhbGciOiJFUzI1NiIsImtpZCI6ImNjOWM5OWQyLWI2MWItNDE5NS1iZDJmLTdjYzA0ODY3MjZjOCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3hwZGVrc3RpYnVyZXl6aGtmdHZxLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI0ZTk0MDgzNS1jOGI5LTQ5NGQtYTA1Zi1jMDU4NDM3MzBmYmUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzg0NDQ2MzIzLCJpYXQiOjE3ODQ0NDI3MjMsImVtYWlsIjoiYWRtaW5AYWRtaW4uY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJmdWxsX25hbWUiOiJBZG1pbiBVc2VyIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI0ZTk0MDgzNS1jOGI5LTQ5NGQtYTA1Zi1jMDU4NDM3MzBmYmUiLCJ0aWVyIjoic3RhcnRlciJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzg0NDQyNzIzfV0sInNlc3Npb25faWQiOiIyZmVkMTkzMC1hZTQ0LTRiOTItOTFhNC04ZDIxNzlkZDRiMTUiLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.EsndlUIdLKwTQqW8IFU1jzTbjigy0u00o2UVbfDUoyhgFe-Ktw9kKHAwiC_1eCL_20pxBJV2h11vuDLPVbuJgg
 
 # {
 #   "userId": "user-123",
@@ -40,6 +27,17 @@ Content-Type: application/json
 {
   "email": "admin@admin.com",
   "password": "strongpassword123",
+  "tier": "free"
+}
+
+
+### Auth - login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@gmail.com",
+  "password": "Bigsmoke",
   "tier": "free"
 }
 
@@ -229,4 +227,94 @@ Content-Type: application/json
   "images": ["data:image/png;base64,{{imageBase64}}"],
   "provider": "openai",
   "extractionModel": "gpt-5.5"
+}
+
+
+
+###############################################################
+### BILLING
+###############################################################
+
+### Billing - Get available plans
+GET {{baseUrl}}/api/billing/plan
+Authorization: Bearer {{token}}
+
+###
+
+### Billing - Start Starter checkout
+POST {{baseUrl}}/api/billing/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "plan": "starter"
+}
+
+###
+
+### Billing - Start Pro checkout
+POST {{baseUrl}}/api/billing/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "plan": "pro"
+}
+
+###
+
+### Billing - Start legend checkout
+POST {{baseUrl}}/api/billing/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "plan": "legend"
+}
+
+###
+
+### Billing - Invalid plan (should return 400)
+POST {{baseUrl}}/api/billing/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "plan": "gold"
+}
+
+###
+
+### Billing - Callback (successful payment)
+# Replace TEST_REFERENCE with a real Paystack transaction reference.
+GET {{baseUrl}}/api/billing/callback?reference=4e940835-c8b9-494d-a05f-c05843730fbe-starter-29740312
+
+###
+
+### Billing - Callback (missing reference)
+GET {{baseUrl}}/api/billing/callback
+
+###
+
+### Billing - Webhook (testing only)
+# NOTE:
+# This request will FAIL signature verification unless you generate a valid
+# x-paystack-signature using your PAYSTACK_SECRET_KEY.
+#
+# For local development you can temporarily bypass signature verification
+# if needed.
+
+POST {{baseUrl}}/api/billing/webhook
+Content-Type: application/json
+x-paystack-signature: REPLACE_WITH_VALID_SIGNATURE
+
+{
+  "event": "charge.success",
+  "data": {
+    "reference": "test_reference",
+    "metadata": {
+      "userId": "4e940835-c8b9-494d-a05f-c05843730fbe",
+      "tier": "pro"
+    }
+  }
 }

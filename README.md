@@ -64,10 +64,10 @@ npm start            # Run compiled output
 
 | Tier | Default limit | Env var |
 |------|-------------|---------|
-| free | 3 | `TIER_FREE_DAILY_LIMIT` |
-| starter | 20 | `TIER_STARTER_DAILY_LIMIT` |
-| pro | 100 | `TIER_PRO_DAILY_LIMIT` |
-| unlimited | ∞ | `TIER_UNLIMITED_DAILY_LIMIT` |
+| free | 3 | `TIER_FREE_MONTHLY_LIMIT` |
+| starter | 20 | `TIER_STARTER_MONTHLY_LIMIT` |
+| pro | 100 | `TIER_PRO_MONTHLY_LIMIT` |
+| legend | ∞ | `TIER_LEGEND_MONTHLY_LIMIT` |
 
 Limits reset at midnight UTC. Change them any time via env vars without redeploying.
 

@@ -1,6 +1,6 @@
 // src/services/usageTracker.ts
 //
-// Supabase-backed usage tracking for per-tier daily limits.
+// Supabase-backed usage tracking for per-tier monthly limits.
 
 import { createClient } from "@supabase/supabase-js";
 import { Tier } from "../types";
@@ -16,11 +16,6 @@ interface UserUsage {
   count: number;
   date: string;
 }
-
-// function today(): string {
-//   return new Date().toISOString().slice(0, 10);
-// }
-
 
 function thisMonth(): string {
   return new Date().toISOString().slice(0, 7); // "2026-07"
@@ -126,6 +121,30 @@ export const usageTracker = {
 
     if (upsertError) {
       console.warn("[usageTracker] failed to persist usage", upsertError.message);
+    }
+  },
+
+  // ── Reset usage for the current month ──────────────────────────────────────
+  // Called after a successful payment (renewal or upgrade) so the user gets
+  // a fresh quota immediately without waiting for next month.
+  async reset(userId: string): Promise<void> {
+    const client = getSupabaseClient();
+    const date = thisMonth();
+
+    const { error } = await client.from("user_usage").upsert(
+      {
+        user_id: userId,
+        usage_month: date,
+        count: "0",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,usage_month" }
+    );
+
+    if (error) {
+      console.warn("[usageTracker] failed to reset usage", error.message);
+    } else {
+      console.log(`[usageTracker] Reset usage for user ${userId} (month: ${date})`);
     }
   },
 

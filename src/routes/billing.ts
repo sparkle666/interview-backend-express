@@ -15,6 +15,7 @@ import crypto from "crypto";
 import { requireAuth } from "../middleware/auth";
 import { Tier } from "../types";
 import { upgradeTierInSupabase } from "../services/supabaseAuth";
+import { usageTracker } from "../services/usageTracker";
 
 const router = Router();
 
@@ -121,6 +122,8 @@ router.get("/billing/callback", async (req: Request, res: Response) => {
       const { userId, tier } = data.data.metadata ?? {};
       if (userId && tier) {
         await upgradeTierInSupabase(userId, tier as Tier);
+        await usageTracker.reset(userId);  // ← add this
+
       }
       res.send(callbackPage("success", tier));
     } else {
@@ -171,6 +174,8 @@ router.post("/billing/webhook", async (req: Request, res: Response) => {
     if (userId && tier) {
       try {
         await upgradeTierInSupabase(userId, tier as Tier);
+        await usageTracker.reset(userId);  // ← add this
+
         console.log(`[billing/webhook] Upgraded user ${userId} to ${tier}`);
       } catch (err) {
         // Log prominently — this is worth alerting on in production.

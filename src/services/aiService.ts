@@ -601,41 +601,8 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     console.log(`[AI Service] OpenAI quiz finished`, {
       responseLength: rawText.length,
     });
-  } else if (provider === "gemini") {
-    const key = getGeminiKey();
-    const parts: GeminiPart[] = [
-      { text: `${systemPrompt}\n\n${userPrompt}` },
-      ...images.map((data) => ({ inlineData: { mimeType: "image/png", data } })),
-    ];
-    const res = await axios.post<GeminiResponse>(
-      `https://generativelanguage.googleapis.com/v1beta/models/${extractionModel || "gemini-2.0-flash"}:generateContent?key=${key}`,
-      {
-        contents: [{ role: "user", parts }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 4000 },
-      }
-    );
-    rawText = res.data.candidates[0].content.parts[0].text;
-  } else if (provider === "anthropic") {
-    const client = makeAnthropic();
-    const response = await client.messages.create({
-      model: extractionModel || "claude-3-7-sonnet-20250219",
-      max_tokens: 4000,
-      temperature: 0.1,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: `${systemPrompt}\n\n${userPrompt}` },
-            ...images.map((data) => ({
-              type: "image" as const,
-              source: { type: "base64" as const, media_type: "image/png" as const, data },
-            })),
-          ],
-        },
-      ],
-    });
-    rawText = (response.content[0] as { type: "text"; text: string }).text;
-  } else {
+  }
+  else {
     throw new Error(`Unknown provider: ${provider}`);
   }
 

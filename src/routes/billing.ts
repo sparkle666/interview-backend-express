@@ -122,7 +122,6 @@ router.get("/billing/callback", async (req: Request, res: Response) => {
       const { userId, tier } = data.data.metadata ?? {};
       if (userId && tier) {
         await upgradeTierInSupabase(userId, tier as Tier);
-        await usageTracker.reset(userId);  // ← add this
 
       }
       res.send(callbackPage("success", tier));

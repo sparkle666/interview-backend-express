@@ -66,8 +66,8 @@ async function limitCheck(req: Request, res: Response): Promise<boolean> {
 const extractSchema = z.object({
   images: z.array(z.string().min(1)).min(1).max(5),
   language: z.string().default("python"),
-  provider: z.enum(["openai", "gemini", "anthropic"]),
-  extractionModel: z.string(),
+  provider: z.enum(["openai", "gemini", "anthropic"]).default("openai"),
+  extractionModel: z.string().default("gpt-5.4-mini"),
   conversationContext: z.string().optional(),
 });
 
@@ -173,9 +173,9 @@ router.post("/solve", async (req: Request, res: Response) => {
 const processSchema = z.object({
   images: z.array(z.string().min(1)).min(1).max(5),
   language: z.string().default("python"),
-  provider: z.enum(["openai", "gemini", "anthropic"]),
-  extractionModel: z.string(),
-  solutionModel: z.string(),
+  provider: z.enum(["openai", "gemini", "anthropic"]).default("openai"),
+  extractionModel: z.string().default("gpt-5.4-mini"),
+  solutionModel: z.string().default("gpt-5.4-mini"),
   conversationContext: z.string().optional(),
 });
 
@@ -339,8 +339,8 @@ router.get("/usage", async (req: Request, res: Response) => {
 
 const quizSchema = z.object({
   images: z.array(z.string().min(1)).min(1).max(5),
-  provider: z.enum(["openai", "gemini", "anthropic"]),
-  extractionModel: z.string(),
+  provider: z.enum(["openai", "gemini", "anthropic"]).default("openai"),
+  extractionModel: z.string().default("gpt-4o"),
 });
 
 router.post("/quiz", async (req: Request, res: Response) => {

@@ -71,7 +71,35 @@ function stripJsonFences(text: string): string {
   return text.replace(/```json|```/g, "").trim();
 }
 
-// const OPENAI_MODEL = "gpt-5.5";
+// ── Image MIME type detection from raw base64 ─────────────────────────────────
+// Reads the first few bytes (magic bytes) of the decoded base64 to determine
+// the actual image format. Falls back to image/png if unknown.
+// Supported: PNG, JPEG, GIF, WEBP, BMP — all accepted by OpenAI, Gemini, Anthropic.
+type ImageMimeType = "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/bmp";
+
+function detectMimeType(base64Data: string): ImageMimeType {
+  try {
+    // Decode only the first 12 bytes — enough for all magic byte signatures
+    const bytes = Buffer.from(base64Data.substring(0, 16), "base64");
+    // PNG: 89 50 4E 47
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+    // JPEG: FF D8 FF
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+    // GIF: 47 49 46 38
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return "image/gif";
+    // WEBP: 52 49 46 46 .. .. .. .. 57 45 42 50
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "image/webp";
+    // BMP: 42 4D
+    if (bytes[0] === 0x42 && bytes[1] === 0x4d) return "image/bmp";
+  } catch {
+    // fall through to default
+  }
+  console.warn("[aiService] Could not detect image MIME type from magic bytes — defaulting to image/png");
+  return "image/png";
+}
+
+// // const OPENAI_MODEL = "gpt-5.5";
 const OPENAI_MODEL = "gpt-5.5";
 
 function formatError(provider: APIProvider, error: unknown, context: string): string {
@@ -115,7 +143,7 @@ export async function extractProblem(
             { type: "input_text", text: basePrompt },
             ...images.map((data) => ({
               type: "input_image" as const,
-              image_url: `data:image/png;base64,${data}`,
+              image_url: `data:${detectMimeType(data)};base64,${data}`,
               detail: "auto" as const,
             })),
           ],
@@ -133,7 +161,7 @@ export async function extractProblem(
     const key = getGeminiKey();
     const parts: GeminiPart[] = [
       { text: basePrompt },
-      ...images.map((data) => ({ inlineData: { mimeType: "image/png", data } })),
+      ...images.map((data) => ({ inlineData: { mimeType: detectMimeType(data), data } })),
     ];
     const res = await axios.post<GeminiResponse>(
       `https://generativelanguage.googleapis.com/v1beta/models/${extractionModel || "gemini-2.0-flash"}:generateContent?key=${key}`,
@@ -159,7 +187,7 @@ export async function extractProblem(
             { type: "text", text: basePrompt },
             ...images.map((data) => ({
               type: "image" as const,
-              source: { type: "base64" as const, media_type: "image/png" as const, data },
+              source: { type: "base64" as const, media_type: detectMimeType(data) as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data },
             })),
           ],
         },
@@ -337,7 +365,7 @@ Use markdown code blocks with language tags for any code examples.`;
             { type: "text", text: userPrompt },
             ...images.map((data) => ({
               type: "image_url" as const,
-              image_url: { url: `data:image/png;base64,${data}` },
+              image_url: { url: `data:${detectMimeType(data)};base64,${data}` },
             })),
           ],
         },
@@ -348,7 +376,7 @@ Use markdown code blocks with language tags for any code examples.`;
     const key = getGeminiKey();
     const parts: GeminiPart[] = [
       { text: `${systemPrompt}\n\n${userPrompt}` },
-      ...images.map((data) => ({ inlineData: { mimeType: "image/png", data } })),
+      ...images.map((data) => ({ inlineData: { mimeType: detectMimeType(data), data } })),
     ];
     const res = await axios.post<GeminiResponse>(
       `https://generativelanguage.googleapis.com/v1beta/models/${debuggingModel || "gemini-2.0-flash"}:generateContent?key=${key}`,
@@ -371,7 +399,7 @@ Use markdown code blocks with language tags for any code examples.`;
             { type: "text", text: `${systemPrompt}\n\n${userPrompt}` },
             ...images.map((data) => ({
               type: "image" as const,
-              source: { type: "base64" as const, media_type: "image/png" as const, data },
+              source: { type: "base64" as const, media_type: detectMimeType(data) as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data },
             })),
           ],
         },
@@ -566,7 +594,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
             { type: "input_text", text: userPrompt },
             ...images.map((data) => ({
               type: "input_image" as const,
-              image_url: `data:image/png;base64,${data}`,
+              image_url: `data:${detectMimeType(data)};base64,${data}`,
               detail: "auto" as const,
             })),
           ],
@@ -581,7 +609,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     const key = getGeminiKey();
     const parts: GeminiPart[] = [
       { text: `${systemPrompt}\n\n${userPrompt}` },
-      ...images.map((data) => ({ inlineData: { mimeType: "image/png", data } })),
+      ...images.map((data) => ({ inlineData: { mimeType: detectMimeType(data), data } })),
     ];
     const res = await axios.post<GeminiResponse>(
       `https://generativelanguage.googleapis.com/v1beta/models/${extractionModel || "gemini-2.0-flash"}:generateContent?key=${key}`,
@@ -607,7 +635,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
             { type: "text", text: `${systemPrompt}\n\n${userPrompt}` },
             ...images.map((data) => ({
               type: "image" as const,
-              source: { type: "base64" as const, media_type: "image/png" as const, data },
+              source: { type: "base64" as const, media_type: detectMimeType(data) as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data },
             })),
           ],
         },

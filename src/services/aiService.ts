@@ -71,8 +71,8 @@ function stripJsonFences(text: string): string {
   return text.replace(/```json|```/g, "").trim();
 }
 
+// const OPENAI_MODEL = "gpt-5.5";
 const OPENAI_MODEL = "gpt-5.5";
-// const OPENAI_MODEL = "gpt-4o-mini";
 
 function formatError(provider: APIProvider, error: unknown, context: string): string {
   const e = error as Record<string, unknown>;
@@ -104,18 +104,6 @@ export async function extractProblem(
 
   if (provider === "openai") {
     const client = makeOpenAI();
-    const content: OpenAI.Responses.ResponseInputMessageContentList = [
-      {
-        type: "input_text" as const,
-        text: basePrompt,
-      },
-      ...images.map((data) => ({
-        type: "input_image" as const,
-        image_url: `data:image/png;base64,${data}`,
-        detail: "auto" as const,
-      })),
-    ];
-
     const response = await client.responses.create({
       model: OPENAI_MODEL,
       instructions:
@@ -123,21 +111,21 @@ export async function extractProblem(
       input: [
         {
           role: "user",
-          content,
+          content: [
+            { type: "input_text", text: basePrompt },
+            ...images.map((data) => ({
+              type: "input_image" as const,
+              image_url: `data:image/png;base64,${data}`,
+              detail: "auto" as const,
+            })),
+          ],
         },
       ],
-      text: {
-        format: {
-          type: "json_object",
-        },
-      },
+      text: { format: { type: "json_object" } },
       max_output_tokens: 4000,
-      temperature: 1,
     });
     const text = response.output_text ?? "";
-    console.log(`[AI Service] OpenAI extract finished`, {
-      textLength: text.length,
-    });
+    console.log(`[AI Service] OpenAI extract finished`, { textLength: text.length });
     return JSON.parse(stripJsonFences(text));
   }
 
@@ -568,39 +556,27 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
 
   if (provider === "openai") {
     const client = makeOpenAI();
-    const content: OpenAI.Responses.ResponseInputMessageContentList = [
-      {
-        type: "input_text" as const,
-        text: userPrompt,
-      },
-      ...images.map((data) => ({
-        type: "input_image" as const,
-        image_url: `data:image/png;base64,${data}`,
-        detail: "auto" as const,
-      })),
-    ];
-
     const response = await client.responses.create({
       model: OPENAI_MODEL,
       instructions: systemPrompt,
       input: [
         {
           role: "user",
-          content,
+          content: [
+            { type: "input_text", text: userPrompt },
+            ...images.map((data) => ({
+              type: "input_image" as const,
+              image_url: `data:image/png;base64,${data}`,
+              detail: "auto" as const,
+            })),
+          ],
         },
       ],
-      text: {
-        format: {
-          type: "json_object",
-        },
-      },
+      text: { format: { type: "json_object" } },
       max_output_tokens: 4000,
-      temperature: 1,
     });
     rawText = response.output_text ?? "";
-    console.log(`[AI Service] OpenAI quiz finished`, {
-      responseLength: rawText.length,
-    });
+    console.log(`[AI Service] OpenAI quiz finished`, { responseLength: rawText.length });
   } else if (provider === "gemini") {
     const key = getGeminiKey();
     const parts: GeminiPart[] = [
